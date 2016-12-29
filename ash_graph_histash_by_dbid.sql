@@ -2,8 +2,14 @@
 /*
    ASH graph from dba_hist_active_sess_history no v$active_session_history
    input DBID
-   time filter by # of days, input variable &v_days
-
+   
+   
+   Usage: ash_graph_histash_by_dbid.sql DBID StartTimestamp FinishTimestamp InstanceNumber
+   
+   
+   @/dbabin/dbatools/diagscript/khailey/ashmasters-master/ash_graph_histash_by_dbid.sql 1612081131 "TIMESTAMP'2016-12-08 03:30:00'" "TIMESTAMP'2016-12-08 7:00:00'" 1
+   @/dbabin/dbatools/diagscript/khailey/ashmasters-master/ash_graph_histash_by_dbid.sql 1612081131 "TIMESTAMP'2016-12-08 03:30:00'" "TIMESTAMP'2016-12-08 7:00:00'" 2
+   
    ATTENTION: number of CPU cores is hard coded to 4. 
               future enhancement is to get CPU_COUNT by DBID instead
 
@@ -35,28 +41,38 @@
 
 */
 
-
-Def v_secs=3600 --  bucket size
+set verify off
+set lin 300
+set pagesize 500
+#Def v_secs=3600 --  bucket size
+Def v_secs=10 --  bucket size
 Def v_days=1 --  total time analyze
 Def v_bars=5 -- size of one AAS in characters
 Def v_graph=80
 
+col rtimestamp format a11
 col aveact format 999.99
 col graph format a80
 col fpct format 9.99
 col spct format 9.99
 col tpct format 9.99
+col aas format 9.99
 col aas1 format 9.99
 col aas2 format 9.99
 col pct1 format 999
 col pct2 format 999
-col first format  a15
-col second format  a15
+col first format  a25
+col second format  a25
 
-Def p_value=4
+#Def v_cpu_count=8
 
+column value new_val v_cpu_count;
+select min(value) as value from DBA_HIST_PARAMETER natural join  dba_hist_active_sess_history
+where parameter_name='cpu_count' and sample_time BETWEEN &&2 AND &&3
+        AND dbid=&&1
+		AND instance_number=&&4;
 
-select to_char(start_time,'DD HH24:MI'),
+select to_char(start_time,'DD HH24:MI:SS') rtimestamp,
        --samples,
        --total,
        --waits,
@@ -76,14 +92,14 @@ select to_char(start_time,'DD HH24:MI'),
          rpad('+',round((cpu*&v_bars)/&v_secs),'+') ||
              rpad('o',round((io*&v_bars)/&v_secs),'o')  ||
              rpad('-',round((waits*&v_bars)/&v_secs),'-')  ||
-             rpad(' ',&p_value * &v_bars,' '),0,(&p_value * &v_bars)) ||
-        &p_value  ||
+             rpad(' ',&v_cpu_count * &v_bars,' '),0,(&v_cpu_count * &v_bars)) ||
+        &v_cpu_count  ||
        -- draw the whole graph, then cut off the amount we drew before the # of cores
            substr(
          rpad('+',round((cpu*&v_bars)/&v_secs),'+') ||
              rpad('o',round((io*&v_bars)/&v_secs),'o')  ||
              rpad('-',round((waits*&v_bars)/&v_secs),'-')  ||
-             rpad(' ',&p_value * &v_bars,' '),(&p_value * &v_bars),( &v_graph-&v_bars*&p_value) )
+             rpad(' ',&v_cpu_count * &v_bars,' '),(&v_cpu_count * &v_bars),( &v_graph-&v_bars*&v_cpu_count) )
         ,0,&v_graph)
         graph
      --  spct,
@@ -95,11 +111,11 @@ select start_time
      , max(samples) samples
      , sum(top.total) total
      , round(max(decode(top.seq,1,pct,null)),2) fpct
-     , substr(max(decode(top.seq,1,decode(top.event,'ON CPU','CPU',event),null)),0,15) first
+     , substr(max(decode(top.seq,1,decode(top.event,'ON CPU','CPU',event),null)),0,30) first
      , round(max(decode(top.seq,2,pct,null)),2) spct
-     , substr(max(decode(top.seq,2,decode(top.event,'ON CPU','CPU',event),null)),0,15) second
+     , substr(max(decode(top.seq,2,decode(top.event,'ON CPU','CPU',event),null)),0,30) second
      , round(max(decode(top.seq,3,pct,null)),2) tpct
-     , substr(max(decode(top.seq,3,decode(top.event,'ON CPU','CPU',event),null)),0,10) third
+     , substr(max(decode(top.seq,3,decode(top.event,'ON CPU','CPU',event),null)),0,30) third
      , sum(waits) waits
      , sum(io) io
      , sum(cpu) cpu
@@ -138,9 +154,9 @@ from (
      from
         dba_hist_active_sess_history ash
      where
-        --       sample_time > sysdate - &v_days
-        -- and sample_time < ( select min(sample_time) from v$active_session_history)
-           dbid=&DBID
+        sample_time BETWEEN &&2 AND &&3
+        AND dbid=&&1
+		AND instance_number=&&4
      group by  trunc(to_char(sample_time,'SSSSS')/&v_secs)
             ,  to_char(sample_time,'YYMMDD')
             ,  decode(ash.session_state,'ON CPU','ON CPU',ash.event)
