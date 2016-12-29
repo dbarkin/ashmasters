@@ -1,4 +1,8 @@
 -- dbarkin  20161229 This scripts list top objects with blocks from dba_hist_active_sess_history
+-- https://ardentperf.com/2007/09/12/gc-buffer-busy-waits-in-rac-finding-hot-blocks/
+-- https://blogs.oracle.com/random/entry/which_sql_is_causing_my
+-- https://oraganism.wordpress.com/2014/10/07/spreading-out-data-with-minimize-records_per_block/
+
 col name format a25; 
 col p1 format a10; 
 col p2 format a10; 
